@@ -18,8 +18,10 @@ No notes
 # Get vCenter Server Names
 #$sourceVC = Read-Host "Please enter the name of the source Server"; 
 #$destVC = Read-Host "Please enter the name of the destination Server"
-$sourceVC = 'pivcss001.vconsultants.local'
-$destVC = 'tanzu-vcsa-1.tanzu.demo'
+#$sourceVC = 'pivcss001.vconsultants.local'
+$sourceVC = 'ldnlxpvcsa1.vitol.com'
+#$destVC = 'tanzu-vcsa-1.tanzu.demo'
+$destVC = 'gvalxpvcsa1.vitol.com'
 
 $exportPath = 'C:\vCenterConfExport'
 
@@ -53,8 +55,7 @@ filter Get-FolderPath {
 
 # Disconnect existing sessions
 if ($global:defaultVIServers) {
-    Disconnect-VIServer -Server $sourceVC -force -confirm:$false | Out-Null
-    Disconnect-VIServer -Server $destVC -force -confirm:$false | Out-Null
+    Disconnect-VIServer -Server * -force -confirm:$false | Out-Null
 }
 
 #$credsSource = get-credential
@@ -206,7 +207,7 @@ foreach ($rootFolder in $rootFolders) {
                     $vmFolderPath = $vmFolder | Get-FolderPath
                     $vmFolderPath.Path = ($vmFolderPath.Path).Replace($rootFolder.Name + "\" + $datacenter.Name + "\",$rootFolder.Name + "\" + "vm\")
                     If ($debug -ge 1) {write-host "        Checking VM Folder: $($vmFolderPath.Path)"}
-                    If (Get-Folder -Server $destVC -Name "$($vmFolder.Name)" -Location "$($vmFolder.Parent)" -ErrorAction Ignore) {
+                    If (get-datacenter $datacenter -Server $destVC| Get-Folder -Server $destVC  -Name "$($vmFolder.Name)" -Location "$($vmFolder.Parent)" -ErrorAction Ignore) {
                         If ($debug -ge 1) {Write-Host "        VM Folder $($vmFolder.Name) already exists in $($destVC)" -ForegroundColor Green}
                     }
                     else {
