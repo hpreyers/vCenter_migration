@@ -21,7 +21,7 @@ No notes
 $sourceVC = 'pivcss001.vconsultants.local'
 $destVC = 'tanzu-vcsa-1.tanzu.demo'
 
-#$exportPath = 'C:\vCenterConfExport'
+$exportPath = 'C:\vCenterConfExport'
 
 # TEST OR DEBUG
 $Test = $false # Run without execution on the destination
@@ -52,8 +52,10 @@ filter Get-FolderPath {
 ### MAIN
 
 # Disconnect existing sessions
-Disconnect-VIServer -Server $sourceVC -force -confirm:$false | Out-Null
-Disconnect-VIServer -Server $destVC -force -confirm:$false | Out-Null
+if ($global:defaultVIServers) {
+    Disconnect-VIServer -Server $sourceVC -force -confirm:$false | Out-Null
+    Disconnect-VIServer -Server $destVC -force -confirm:$false | Out-Null
+}
 
 #$credsSource = get-credential
 #$credsDestination = get-credential
@@ -92,6 +94,7 @@ catch {
     Write-Error "`n($_.Exception.Message)`n"
 }
 
+
 If ($debug -ge 1) {Write-Host "`nChecking Root folders in $($sourceVC) ..."}
 # Retrieve the root folders and loop through each root folder
 $rootFolders = get-folder -server $sourceVC -Type Datacenter | Sort-Object
@@ -102,7 +105,9 @@ foreach ($rootFolder in $rootFolders) {
             write-host "`nChecking Datacenter Folder: $($rootFolder.Parent)\$($rootFolder.Name) on $($destVC)"
         }
         If (Get-Folder -Server $destVC -Name "$($rootFolder.Name)" -Location "$($rootFolder.Parent)" -ErrorAction Ignore) {
-            If ($debug -ge 1) {Write-Host "Datacenter Folder $($rootFolder.Name) already exists in $($destVC)" -ForegroundColor Green}
+            If ($debug -ge 1) {
+                Write-Host "Datacenter Folder $($rootFolder.Name) already exists in $($destVC)" -ForegroundColor Green
+            }
         }
         else {
             If ($debug -ge 1) {Write-Host "Creating Datacenter Folder $($rootFolder.Name) in $($destVC)" -ForegroundColor Yellow}
@@ -150,15 +155,6 @@ foreach ($rootFolder in $rootFolders) {
                         write-host "         -VMSwapfilePolicy: $($cluster.VMSwapfilePolicy)"
                     }
                 }
-                #$clusterSettings = $cluster | Select Name, HAEnabled, HAAdmissionControlEnabled, HAFailoverLevel, HARestartPriority, HAIsolationResponse, DrsEnabled, DrsAutomationLevel, EVCMode
-                # $clusterSettings | foreach {
-                #     $splat = @{
-                #         Name = $_.Name
-                #         HAEnabled = If ($_.HAEnabled -eq "False") {$False} else {[Boolean]$_.HAEnabled}
-                #         DrsEnabled = If ($_.DrsEnabled -eq "False") {$False} else {[Boolean]$_.DrsEnabled}
-                #         Confirm = $false
-                #     }
-                # }
                 $clusterSettings = @{
                     Name = $cluster.Name
                     HAEnabled = If ($cluster.HAEnabled -eq $False) {$False} else {[Boolean]$cluster.HAEnabled}
@@ -173,7 +169,6 @@ foreach ($rootFolder in $rootFolders) {
                 }
                 else {
                     If ($debug -ge 1) {Write-Host "        Creating Cluster $($cluster.Name) in $($datacenter.Name) in $($destVC)" -ForegroundColor Yellow}
-                    #New-Cluster -Server $destVC -Location (get-datacenter -server $destVC -Name $datacenter.Name) @splat | Out-Null
                     If (-not $Test) {
                         $destCluster = New-Cluster -Server $destVC -Location (get-datacenter -server $destVC -Name $datacenter.Name) @clusterSettings | Out-Null
                         $clusterExists = $true
@@ -215,7 +210,6 @@ foreach ($rootFolder in $rootFolders) {
                         If ($debug -ge 1) {Write-Host "        VM Folder $($vmFolder.Name) already exists in $($destVC)" -ForegroundColor Green}
                     }
                     else {
-                        #New-Folder -Server $destVC -Name "$($cluster.Name)" -Location "$($datacenter.Name)" |Out-Null
                         $key = @()
                         $key =  ($vmFolderPath.Path -split "\\")[-2]
                         if ($key -eq "vm") {
@@ -231,49 +225,38 @@ foreach ($rootFolder in $rootFolders) {
                             }
                         }
                     }
+                    # $folderperms = Get-Folder -Location $vmFolder | Get-VIPermission #| ?{$_.IsSystem -eq $False}
+                    # foreach ($folderperm in $folderperms) {
+                    #     Write-Host "VM Permissions: $folderperm"
+                    # }
                 }
             }
+            If ($debug -ge 1) {write-host "`n    Checking VM Folders: done" -ForegroundColor Green}
         }
     }
 }
 
-# # #Get the Permissions  
-# $folderperms = Get-Folder -Server $sourceVC | Get-VIPermission
-# $permissions = Get-VIpermission -Server $sourceVC
+# Get the Permissions  - Users need to exist
+$folderperms = Get-VIpermission -Server $sourceVC | Where ($_.Principal -inotcontains "VSPHERE.LOCAL")
 
-# $report = @()
-# foreach($perm in $permissions){
-#     $row = "" | select EntityId, FolderName, Role, Principal, IsGroup, Propagate
-#     $row.EntityId = $perm.EntityId
-#     $Foldername = (Get-View -id $perm.EntityId).Name
-#     $row.FolderName = $foldername
-#     $row.Principal = $perm.Principal
-#     $row.Role = $perm.Role
-#     $row.IsGroup = $perm.IsGroup
-#     $row.Propagate = $perm.Propagate
-#     $report += $row
-# }
+$report = @()
+foreach($perm in $folderperms){
+    $row = "" | select EntityId, FolderName, Role, Principal, IsGroup, Propagate
+    $row.EntityId = $perm.EntityId
+    $Foldername = (Get-View -id $perm.EntityId).Name
+    $row.FolderName = $foldername
+    $row.Principal = $perm.Principal
+    $row.Role = $perm.Role
+    $row.IsGroup = $perm.IsGroup
+    $row.Propagate = $perm.Propagate
+    $report += $row
+}
+$report | export-csv "$exportPath\perms-$($sourceVC).csv" -NoTypeInformation
 
-# foreach($perm in $folderperms){
-#     $row = "" | select EntityId, FolderName, Role, Principal, IsGroup, Propagate
-#     $row.EntityId = $perm.EntityId
-#     $Foldername = (Get-View -id $perm.EntityId).Name
-#     $row.FolderName = $foldername
-#     $row.Principal = $perm.Principal
-#     $row.Role = $perm.Role
-#     $row.IsGroup = $perm.IsGroup
-#     $row.Propagate = $perm.Propagate
-#     $report += $row
-# }
-
-# $report | export-csv "$exportPath\perms-$($datacenter).csv" -NoTypeInformation
-
-# # ##IMPORT FOLDERS
-# If (-not $Test -and -not $Import){
-
+# If (-not $Test){
 #     ##Import Permissions
 #     $permissions = @()
-#     $permissions = Import-Csv "$exportPath\perms-$($datacenter).csv"
+#     $permissions = Import-Csv "$exportPath\perms-$($sourceVC).csv"
 
 #     foreach ($perm in $permissions) {
 #         $entity = ""
@@ -283,11 +266,11 @@ foreach ($rootFolder in $rootFolders) {
 #             {
 #                 Folder* {
 #                 $entity.type = "Folder"
-#                 $entity.value = ((get-datacenter $datacenter | get-folder $perm.Foldername).ID).Trimstart("Folder-")
+#                 $entity.value = ((get-folder "$($perm.Foldername)" -Server $destVC).ID).Trimstart("Folder-")
 #             }
 #                 VirtualMachine* {
 #                 $entity.Type = "VirtualMachine"
-#                 $entity.value = ((get-datacenter $datacenter | Get-vm $perm.Foldername).Id).Trimstart("VirtualMachine-")
+#                 $entity.value = ((Get-vm $perm.Foldername).Id).Trimstart("VirtualMachine-")
 #             }
 #     }
 #     $setperm = New-Object VMware.Vim.Permission
@@ -297,14 +280,14 @@ foreach ($rootFolder in $rootFolders) {
 #         } else {
 #             $setperm.group = $false
 #         }
-#     $setperm.roleId = (Get-virole $perm.Role).id
+#     $setperm.roleId = (Get-virole $perm.Role -Server $destVC).id
 #         if ($perm.propagate -eq "True") {
 #             $setperm.propagate = $true
 #         } else {
 #             $setperm.propagate = $false
 #         }
 
-#     $doactual = Get-View -Id 'AuthorizationManager-AuthorizationManager'
+#     $doactual = Get-View -Id 'AuthorizationManager-AuthorizationManager' -Server $destVC
 #     $doactual.SetEntityPermissions($entity, $setperm)
 #     }
 # }
