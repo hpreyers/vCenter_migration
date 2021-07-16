@@ -18,12 +18,16 @@ No notes
 # Get vCenter Server Names
 #$sourceVC = Read-Host "Please enter the name of the source Server"; 
 #$destVC = Read-Host "Please enter the name of the destination Server"
-#$sourceVC = 'pivcss001.vconsultants.local'
-$sourceVC = 'ldnlxpvcsa1.vitol.com'
-#$destVC = 'tanzu-vcsa-1.tanzu.demo'
-$destVC = 'gvalxpvcsa1.vitol.com'
+$sourceVC = 'pivcss001.vconsultants.local'
+#$sourceVC = 'ldnlxpvcsa1.vitol.com'
+$destVC = 'tanzu-vcsa-1.tanzu.demo'
+#$destVC = 'gvalxpvcsa1.vitol.com'
+$ssoDomain = 'vsphere.local'
+$strRolesCustomPrefix = 'VITOL' # based on this prefix string we will filter the roles to transfer
 
+$timeStamp = Get-Date -Format "yyMMdd_hhmmss"
 $exportPath = 'C:\vCenterConfExport'
+$verboseLogFile = "$($exportPath)\$($timeStamp)_MigrationLog.log"
 
 # TEST OR DEBUG
 $Test = $false # Run without execution on the destination
@@ -51,6 +55,62 @@ filter Get-FolderPath {
     }
 }
 
+Function MyLogger {
+    param(
+    [Parameter(Mandatory=$true)]
+    [String]$Message,
+    [String]$Color = 'White'
+    )
+
+    $timeStamp = Get-Date -Format "yyMMdd hh:mm:ss"
+
+    Write-Host -NoNewline -ForegroundColor White "[$timestamp]"
+    Write-Host -ForegroundColor  $color " $message"
+    $logMessage = "[$timeStamp] $message"
+    $logMessage | Out-File -Append -LiteralPath $verboseLogFile
+}
+
+Function AddPermission {
+    param(
+        [Parameter(Mandatory=$true)]$ObjectSource,
+        [Parameter(Mandatory=$true)]$ObjectDest
+        )
+    
+    $authMgr = Get-View AuthorizationManager -Server $sourceVC
+    $inherited = $false
+    #$permisions = $authMgr.RetrieveEntityPermissions($rootFolder.ExtensionData.MoRef,$inherited)
+    $permisions = $authMgr.RetrieveEntityPermissions($ObjectSource.ExtensionData.MoRef,$inherited)
+    MyLogger -Message "Checking Permissions"
+
+    foreach ($permission in $permisions) {
+        $Domain = ($permission.Principal -split "\\")[0]
+        If ($($Domain) -ine $($ssoDomain)){
+            If ($permission.Group -eq $false){
+                MyLogger -Message "Found user $($permission.Principal) on $($ObjectSource.Name) -- Updating on $($destVC)" -Color Green
+            } else {
+                MyLogger -Message "Found group $($permission.Principal) on $($ObjectSource.Name) -- Updating on $($destVC)" -Color Green
+            }
+            $authMgrDest = Get-View AuthorizationManager -Server $destVC
+            $sourceRole = $authMgr.RoleList | where{$_.RoleId -eq $permission.RoleId}
+            $roleName = $sourceRole.Name
+            $destRole = $authMgrDest.RoleList | where{$_.Name -eq $roleName}
+
+            $perm = New-Object VMware.Vim.Permission
+            #$tmpPerm = $authMgrDest.RetrieveEntityPermissions($ObjectDest.ExtensionData.MoRef,$inherited)
+            $perm.Entity = $ObjectSource.Id
+            $perm.principal = $permission.Principal
+            $perm.propagate = $permission.Propagate
+            $perm.Group = $permission.Group
+            $perm.roleid = $destRole.RoleId
+
+            $authMgrDest.SetEntityPermissions($ObjectDest.ExtensionData.MoRef, @($perm))
+        } else {
+            MyLogger -Message "Found user $($permission.Principal) on $($ObjectSource.Name) -- Disregarding ssoDomain: $($ssoDomain)" -Color Red
+        }
+    }
+    MyLogger -Message "Done Checking Permissions" -Color Blue
+}
+
 ### MAIN
 
 # Disconnect existing sessions
@@ -65,194 +125,274 @@ connect-viserver -server $destVC -User administrator@vsphere.local -Password VMw
 
 # Migrate Roles
 # Variables
-$strRolesCustomPrefix = 'VITOL' # based on this prefix string we will filter the roles to transfer
 
 try {
-    If ($debug -ge 1) {Write-Host "`nChecking Roles in $($sourceVC) ..."}
+    If ($debug -ge 1) {MyLogger -Message "Checking Roles in $($sourceVC) ..."}
     $roleCreated = 0
     # Get roles to transfer (for everything else than system roles: '| ?{$_.IsSystem -eq $False}')
     $roles = Get-VIRole -Server $sourceVC -Name $strRolesCustomPrefix*
     # Get role Privileges for each role
     foreach ($role in $roles) {
         [string[]]$privsforRoleAfromsourceVC = Get-VIPrivilege -Role (Get-VIRole -Name $role -server $sourceVC) |%{$_.id}
-        If (Get-VIRole -Name $role.Name -Server $destVC -ErrorAction Ignore) {
-            If ($debug -ge 1) {Write-Host "`nRole $($role.Name) already exists in $($destVC) - Updating Privileges" -ForegroundColor Green}
+        If (Get-VIRole -Name $($role.Name) -Server $destVC -ErrorAction Ignore) {
+            If ($debug -ge 1) {MyLogger -Message "Role $($role.Name) already exists in $($destVC) - Updating Privileges" -Color Green}
         }
         else {
             # Create new role in Destination vCenter
-            If ($debug -ge 1) {Write-Host "`nCreating Role $($role.Name) in $($destVC)" -ForegroundColor Yellow}
+            If ($debug -ge 1) {MyLogger -Message "Creating Role $($role.Name) in $($destVC)" -Color Yellow}
             If (-not $Test) {New-VIRole -name $role -Server $destVC | Out-Null}
             $roleCreated = +1
             # Add Privileges to new role.
-            If ($debug -ge 1) {Write-Host "Adding Privileges to Role $($role.Name) in $($destVC)" -ForegroundColor Yellow}
+            If ($debug -ge 1) {MyLogger -Message "Adding Privileges to Role $($role.Name) in $($destVC)" -Color Yellow}
             If (-not $Test) {Set-VIRole -role (get-virole -Name $role -Server $destVC) -AddPrivilege (get-viprivilege -id $privsforRoleAfromsourceVC -server $destVC) | Out-Null}
         }
     }
-    If ($roleCreated -eq 0) {If ($debug -ge 1) {Write-Host "`nNo Roles to create in $($destVC) ..." -ForegroundColor Green}}
+    If ($roleCreated -eq 0) {If ($debug -ge 1) {MyLogger -Message "No Roles to create in $($destVC) ..." -Color Blue}}
 }
 catch {
-    Write-Host "There was an error in the Roles Migration part" -ForegroundColor Red
-    Write-Error "`n($_.Exception.Message)`n"
+    MyLogger -Message "There was an error in the Roles Migration part" Red
+    MyLogger -Message "`n($_.Exception.Message)`n"
 }
 
 
-If ($debug -ge 1) {Write-Host "`nChecking Root folders in $($sourceVC) ..."}
+If ($debug -ge 1) {MyLogger -Message "Checking Root folders in $($sourceVC) ..."}
 # Retrieve the root folders and loop through each root folder
 $rootFolders = get-folder -server $sourceVC -Type Datacenter | Sort-Object
 foreach ($rootFolder in $rootFolders) {
     # Discard the root folder 'Datacenters'
     If ($rootFolder.Name -ne 'Datacenters'){
         If ($debug -ge 1) {
-            write-host "`nChecking Datacenter Folder: $($rootFolder.Parent)\$($rootFolder.Name) on $($destVC)"
+            MyLogger -Message "Checking Datacenter Folder: $($rootFolder.Parent)\$($rootFolder.Name) on $($destVC)"
         }
-        If (Get-Folder -Server $destVC -Name "$($rootFolder.Name)" -Location "$($rootFolder.Parent)" -ErrorAction Ignore) {
-            If ($debug -ge 1) {
-                Write-Host "Datacenter Folder $($rootFolder.Name) already exists in $($destVC)" -ForegroundColor Green
-            }
+        If ($destrootFolder = Get-Folder -Server $destVC -Name "$($rootFolder.Name)" -Location "$($rootFolder.Parent)" -ErrorAction Ignore) {
+            If ($debug -ge 1) {MyLogger -Message "Datacenter Folder $($rootFolder.Name) already exists in $($destVC)" -Color Green}
         }
         else {
-            If ($debug -ge 1) {Write-Host "Creating Datacenter Folder $($rootFolder.Name) in $($destVC)" -ForegroundColor Yellow}
-            If (-not $Test) {New-Folder -Server $destVC -Name "$($rootFolder.Name)" -Location "$($rootFolder.Parent)" |Out-Null}
+            If ($debug -ge 1) {MyLogger -Message "Creating Datacenter Folder $($rootFolder.Name) in $($destVC)" -Color Yellow}
+            If (-not $Test) {
+                $destrootFolder = New-Folder -Server $destVC -Name "$($rootFolder.Name)" -Location "$($rootFolder.Parent)" -ErrorAction Ignore
+            }
         }
+        # Updating Permissions on the object
+        AddPermission -ObjectSource $rootFolder -ObjectDest $destrootFolder
+
         # Retrieve the datacenters
         $datacenters = get-datacenter -server $sourceVC -Location $rootFolder | Sort-Object
         foreach ($datacenter in $datacenters) {
-            If ($debug -ge 1) {write-host "`n    Checking Datacenter: $($datacenter.ParentFolder)\$($datacenter.Name)"}
-            If (Get-Datacenter -Server $destVC -Name "$($datacenter.Name)" -Location "$($datacenter.ParentFolder)" -ErrorAction Ignore) {
-                If ($debug -ge 1) {Write-Host "    Datacenter $($datacenter.Name) already exists in $($destVC)" -ForegroundColor Green}
+            If ($debug -ge 1) {MyLogger -Message "Checking Datacenter: $($datacenter.ParentFolder)\$($datacenter.Name)"}
+            If ($destDatacenter = Get-Datacenter -Server $destVC -Name "$($datacenter.Name)" -Location "$($datacenter.ParentFolder)" -ErrorAction Ignore) {
+                If ($debug -ge 1) {MyLogger -Message "Datacenter $($datacenter.Name) already exists in $($destVC)" -Color Green}
             }
             else {
-                If ($debug -ge 1) {Write-Host "    Creating Datacenter $($datacenter.Name) in $($destVC)" -ForegroundColor Yellow}
-                If (-not $Test) {New-Datacenter -Server $destVC -Name "$($datacenter.Name)" -Location "$($datacenter.ParentFolder)" |Out-Null}
+                If ($debug -ge 1) {MyLogger -Message "Creating Datacenter $($datacenter.Name) in $($destVC)" -Color Yellow}
+                If (-not $Test) {$destDatacenter = New-Datacenter -Server $destVC -Name "$($datacenter.Name)" -Location "$($datacenter.ParentFolder)" -ErrorAction Ignore}
             }
+            # Updating Permissions on the object
+            AddPermission -ObjectSource $datacenter -ObjectDest $destDatacenter
+
             # Check if the datacenter has subfolders
-            $dcSubFolders = get-folder -server $sourceVC -Type Datacenter -Location $datacenter | Sort-Object
+            MyLogger -Message "Checking Datacenter SubFolders"
+            $dcSubFolders = get-folder -server $sourceVC -Type HostAndCluster -Location $datacenter | Sort-Object
             foreach ($dcSubFolder in $dcSubFolders) {
-                If ($debug -ge 1) {
-                    write-host "`nChecking Datacenter SubFolder: $($datacenter.Name)\$($dcSubFolder.Name) on $($destVC)"
-                }
-                If (Get-Folder -Server $destVC -Name "$($dcSubFolder.Name)" -Location $datacenter -ErrorAction Ignore) {
-                    If ($debug -ge 1) {Write-Host "Datacenter SubFolder $($dcSubFolder.Name) already exists in $($destVC)" -ForegroundColor Green}
-                }
-                else {
-                    If ($debug -ge 1) {Write-Host "Creating Datacenter SubFolder $($dcSubFolder.Name) in $($destVC)" -ForegroundColor Yellow}
-                    If (-not $Test) {New-Folder -Server $destVC -Name "$($dcSubFolder.Name)" -Location (Get-Datacenter -Server $destVC -Name "$($datacenter.Name)") |Out-Null}
+                If ($($dcSubFolder.Name) -ne 'host'){
+                    If ($debug -ge 1) {
+                        MyLogger -Message "Checking Datacenter SubFolder: $($datacenter.Name)\$($dcSubFolder.Name) on $($destVC)"
+                    }
+                    If ($destdcSubFolder = Get-Folder -Server $destVC -Name "$($dcSubFolder.Name)" -Type HostAndCluster -ErrorAction Ignore) {
+                        If ($debug -ge 1) {MyLogger -Message "Datacenter SubFolder $($dcSubFolder.Name) already exists in $($destVC)" -Color Green}
+                    }
+                    else {
+                        If ($debug -ge 1) {MyLogger -Message "Creating Datacenter SubFolder $($dcSubFolder.Name) in $($destVC)" -Color Yellow}
+                        If (-not $Test) {$destdcSubFolder = New-Folder -Server $destVC -Name "$($dcSubFolder.Name)" -Location (Get-Datacenter -Server $destVC -Name "$($datacenter.Name)") -ErrorAction Ignore}
+                    }
+                    # Updating Permissions on the object
+                    AddPermission -ObjectSource $dcSubFolder -ObjectDest $destdcSubFolder    
                 }
             }
             # Check the clusters within the datacenter
             $clusters = Get-cluster -Server $sourceVC -Location $datacenter | Sort-Object
             foreach ($cluster in $clusters) {
                 If ($debug -ge 1) {
-                    write-host "        Checking Cluster: $($datacenter.Name)\$($cluster.Name)"
+                    MyLogger -Message "Checking Cluster: $($datacenter.Name)\$($cluster.Name)"
                     If ($debug -ge 2) {
-                        write-host "         -DrsAutomationLevel: $($cluster.DrsAutomationLevel)"
-                        write-host "         -DrsEnabled: $($cluster.DrsEnabled)"
-                        write-host "         -EVCMode: $($cluster.EVCMode)"
-                        write-host "         -HAAdmissionControlEnabled: $($cluster.HAAdmissionControlEnabled)"
-                        write-host "         -HAEnabled: $($cluster.HAEnabled)"
-                        write-host "         -HAFailoverLevel: $($cluster.HAFailoverLevel)"
-                        write-host "         -HAIsolationResponse: $($cluster.HAIsolationResponse)"
-                        write-host "         -HARestartPriority: $($cluster.HARestartPriority)"
-                        write-host "         -VMSwapfilePolicy: $($cluster.VMSwapfilePolicy)"
+                        MyLogger -Message "- DrsAutomationLevel: $($cluster.DrsAutomationLevel)"
+                        MyLogger -Message "- DrsEnabled: $($cluster.DrsEnabled)"
+                        MyLogger -Message "- EVCMode: $($cluster.EVCMode)"
+                        MyLogger -Message "- HAAdmissionControlEnabled: $($cluster.HAAdmissionControlEnabled)"
+                        MyLogger -Message "- HAEnabled: $($cluster.HAEnabled)"
+                        MyLogger -Message "- HAFailoverLevel: $($cluster.HAFailoverLevel)"
+                        MyLogger -Message "- HAIsolationResponse: $($cluster.HAIsolationResponse)"
+                        MyLogger -Message "- HARestartPriority: $($cluster.HARestartPriority)"
+                        MyLogger -Message "- VMSwapfilePolicy: $($cluster.VMSwapfilePolicy)"
                     }
                 }
                 $clusterSettings = @{
                     Name = $cluster.Name
                     HAEnabled = If ($cluster.HAEnabled -eq $False) {$False} else {[Boolean]$cluster.HAEnabled}
                     DrsEnabled = If ($cluster.DrsEnabled -eq $False) {$False} else {[Boolean]$cluster.DrsEnabled}
+                    VsanEnabled = If ($cluster.VsanEnabled -eq $False) {$False} else {[Boolean]$cluster.VsanEnabled}
                     Confirm = $false
                 }
                 If ($destCluster = Get-Cluster -Server $destVC -Name "$($cluster.Name)" -Location "$($datacenter.Name)" -ErrorAction Ignore) {
                     If ($debug -ge 1) {
-                        Write-Host "        Cluster $($cluster.Name) already exists in $($destVC)" -ForegroundColor Green
+                        MyLogger -Message "Cluster $($cluster.Name) already exists in $($destVC)" -Color Green
                         $clusterExists = $true
                     }
                 }
                 else {
-                    If ($debug -ge 1) {Write-Host "        Creating Cluster $($cluster.Name) in $($datacenter.Name) in $($destVC)" -ForegroundColor Yellow}
+                    If ($debug -ge 1) {MyLogger -Message "Creating Cluster $($cluster.Name) in $($datacenter.Name) in $($destVC)" -Color Yellow}
                     If (-not $Test) {
-                        $destCluster = New-Cluster -Server $destVC -Location (get-datacenter -server $destVC -Name $datacenter.Name) @clusterSettings | Out-Null
+                        $destCluster = New-Cluster -Server $destVC -Location (get-datacenter -server $destVC -Name $datacenter.Name) @clusterSettings -ErrorAction Ignore
                         $clusterExists = $true
+                        #Start-Sleep 1
                     }
                 }
                 If ($cluster.HAEnabled -eq $True -and $clusterExists -eq $true){
-                    If ($debug -ge 1) {Write-Host "        Updating Cluster HA Settings on $($cluster.Name) in $($datacenter.Name) in $($destVC)" -ForegroundColor Yellow}
-                    $clusterSettings = @{
-                        Name = $cluster.Name
-                        HAAdmissionControlEnabled = If ($cluster.HAAdmissionControlEnabled -eq $False) {$False} else {[Boolean]$cluster.HAAdmissionControlEnabled}
-                        HAFailoverLevel = $cluster.HAFailoverLevel
-                        HARestartPriority = $($cluster.HARestartPriority)
-                        HAIsolationResponse = $($cluster.HAIsolationResponse)
-                        Confirm = $false
-                    }
-                    Set-Cluster -Cluster $destCluster @clusterSettings | Out-Null
+                    If ($debug -ge 1) {MyLogger -Message "Setting Cluster HA Settings on $($cluster.Name) in $($datacenter.Name) in $($destVC)" -Color Yellow}
+                    # $clusterSettings = @{
+                    #     Name = $cluster.Name
+                    #     HAAdmissionControlEnabled = If ($cluster.HAAdmissionControlEnabled -eq $False) {$False} else {[Boolean]$cluster.HAAdmissionControlEnabled}
+                    #     HAFailoverLevel = $cluster.HAFailoverLevel
+                    #     HARestartPriority = $($cluster.HARestartPriority)
+                    #     HAIsolationResponse = $($cluster.HAIsolationResponse)
+                    #     Confirm = $false
+                    # }
+                    # Set-Cluster -Cluster $destCluster @clusterSettings | Out-Null
+                    $spec = New-Object VMware.Vim.ClusterConfigSpecEx
+                    $spec.DasConfig = New-Object VMware.Vim.ClusterDasConfigInfo
+                    $spec.DasConfig.Enabled = $cluster.ExtensionData.Configuration.DasConfig.Enabled
+                    $spec.DasConfig.VmMonitoring = $cluster.ExtensionData.Configuration.DasConfig.VmMonitoring
+                    $spec.DasConfig.HostMonitoring = $cluster.ExtensionData.Configuration.DasConfig.HostMonitoring
+                    $spec.DasConfig.VmComponentProtecting = $cluster.ExtensionData.Configuration.DasConfig.VmComponentProtecting
+                    $spec.DasConfig.FailoverLevel = $cluster.ExtensionData.Configuration.DasConfig.FailoverLevel
+                    $spec.DasConfig.AdmissionControlPolicy = New-Object VMware.Vim.ClusterFailoverLevelAdmissionControlPolicy
+                    $spec.DasConfig.AdmissionControlEnabled = $cluster.ExtensionData.Configuration.DasConfig.AdmissionControlEnabled
+                    $spec.DasConfig.AdmissionControlPolicy.FailoverLevel = $cluster.ExtensionData.Configuration.DasConfig.AdmissionControlPolicy.FailoverLevel
+                    $spec.DasConfig.AdmissionControlPolicy.ResourceReductionToToleratePercent = $cluster.ExtensionData.Configuration.DasConfig.AdmissionControlPolicy.ResourceReductionToToleratePercent
+                    $spec.DasConfig.DefaultVmSettings = New-Object VMware.Vim.ClusterDasVmSettings
+                    $spec.DasConfig.DefaultVmSettings.RestartPriority = $cluster.ExtensionData.Configuration.DasConfig.DefaultVmSettings.RestartPriority
+                    $spec.DasConfig.DefaultVmSettings.RestartPriorityTimeout = $cluster.ExtensionData.Configuration.DasConfig.DefaultVmSettings.RestartPriorityTimeout
+                    $spec.DasConfig.DefaultVmSettings.IsolationResponse = $cluster.ExtensionData.Configuration.DasConfig.DefaultVmSettings.IsolationResponse
+                    $spec.DasConfig.DefaultVmSettings.VmToolsMonitoringSettings = New-Object VMware.Vim.ClusterVmToolsMonitoringSettings
+                    $spec.DasConfig.DefaultVmSettings.VmToolsMonitoringSettings.Enabled = $cluster.ExtensionData.Configuration.DasConfig.DefaultVmSettings.VmToolsMonitoringSettings.Enabled
+                    $spec.DasConfig.DefaultVmSettings.VmToolsMonitoringSettings.VmMonitoring = $cluster.ExtensionData.Configuration.DasConfig.DefaultVmSettings.VmToolsMonitoringSettings.VmMonitoring
+                    $spec.DasConfig.DefaultVmSettings.VmToolsMonitoringSettings.ClusterSettings = $cluster.ExtensionData.Configuration.DasConfig.DefaultVmSettings.VmToolsMonitoringSettings.ClusterSettings
+                    $spec.DasConfig.DefaultVmSettings.VmToolsMonitoringSettings.FailureInterval = $cluster.ExtensionData.Configuration.DasConfig.DefaultVmSettings.VmToolsMonitoringSettings.FailureInterval
+                    $spec.DasConfig.DefaultVmSettings.VmToolsMonitoringSettings.MinUpTime = $cluster.ExtensionData.Configuration.DasConfig.DefaultVmSettings.VmToolsMonitoringSettings.MinUpTime
+                    $spec.DasConfig.DefaultVmSettings.VmToolsMonitoringSettings.MaxFailures = $cluster.ExtensionData.Configuration.DasConfig.DefaultVmSettings.VmToolsMonitoringSettings.MaxFailures
+                    $spec.DasConfig.DefaultVmSettings.VmToolsMonitoringSettings.MaxFailureWindow = $cluster.ExtensionData.Configuration.DasConfig.DefaultVmSettings.VmToolsMonitoringSettings.MaxFailureWindow
+                    $spec.DasConfig.DefaultVmSettings.VmComponentProtectionSettings = New-Object VMware.Vim.ClusterVmComponentProtectionSettings
+                    $spec.DasConfig.DefaultVmSettings.VmComponentProtectionSettings.VmStorageProtectionForAPD = $cluster.ExtensionData.Configuration.DasConfig.DefaultVmSettings.VmComponentProtectionSettings.VmStorageProtectionForAPD
+                    $spec.DasConfig.DefaultVmSettings.VmComponentProtectionSettings.EnableAPDTimeoutForHosts = $cluster.ExtensionData.Configuration.DasConfig.DefaultVmSettings.VmComponentProtectionSettings.EnableAPDTimeoutForHosts
+                    $spec.DasConfig.DefaultVmSettings.VmComponentProtectionSettings.VmTerminateDelayForAPDSec = $cluster.ExtensionData.Configuration.DasConfig.DefaultVmSettings.VmComponentProtectionSettings.VmTerminateDelayForAPDSec
+                    $spec.DasConfig.DefaultVmSettings.VmComponentProtectionSettings.VmReactionOnAPDCleared = $cluster.ExtensionData.Configuration.DasConfig.DefaultVmSettings.VmComponentProtectionSettings.VmReactionOnAPDCleared
+                    $spec.DasConfig.DefaultVmSettings.VmComponentProtectionSettings.VmStorageProtectionForPDL = $cluster.ExtensionData.Configuration.DasConfig.DefaultVmSettings.VmComponentProtectionSettings.VmStorageProtectionForPDL
+                    $spec.DasConfig.Option = $cluster.ExtensionData.Configuration.DasConfig.Option
+                    $spec.DasConfig.HeartbeatDatastore = $cluster.ExtensionData.Configuration.DasConfig.HeartbeatDatastore
+                    $spec.DasConfig.HBDatastoreCandidatePolicy = $cluster.ExtensionData.Configuration.DasConfig.HBDatastoreCandidatePolicy
+                    $modify = $true
+                    $_this = Get-View -Id $destCluster.Id
+                    $_this.ReconfigureComputeResource_Task($spec, $modify) | Out-Null
                 }
                 If ($cluster.DrsEnabled -eq $True -and $clusterExists -eq $true){
-                    If ($debug -ge 1) {Write-Host "        Updating Cluster Drs Settings on $($cluster.Name) in $($datacenter.Name) in $($destVC)" -ForegroundColor Yellow}
-                    $clusterSettings = @{
-                        Name = $cluster.Name
-                        DrsAutomationLevel = $($cluster.DrsAutomationLevel)
-                        Confirm = $false
-                    }
-                    Set-Cluster -Cluster $destCluster @clusterSettings | Out-Null
+                    If ($debug -ge 1) {MyLogger -Message "Setting Cluster Drs Settings on $($cluster.Name) in $($datacenter.Name) in $($destVC)" -Color Yellow}
+                    # $clusterSettings = @{
+                    #     Name = $cluster.Name
+                    #     DrsAutomationLevel = $($cluster.DrsAutomationLevel)
+                    #     Confirm = $false
+                    # }
+                    # Set-Cluster -Cluster $destCluster @clusterSettings | Out-Null
+                    $spec.DrsConfig = New-Object VMware.Vim.ClusterDrsConfigInfo
+                    $spec.DrsConfig.Enabled = $cluster.ExtensionData.Configuration.DrsConfig.Enabled
+                    $spec.DrsConfig.EnableVmBehaviorOverrides = $cluster.ExtensionData.Configuration.DrsConfig.EnableVmBehaviorOverrides
+                    $spec.DrsConfig.DefaultVmBehavior = $cluster.ExtensionData.Configuration.DrsConfig.DefaultVmBehavior
+                    $spec.DrsConfig.VmotionRate = $cluster.ExtensionData.Configuration.DrsConfig.VmotionRate
+                    $spec.DrsConfig.ScaleDescendantsShares = $cluster.ExtensionData.Configuration.DrsConfig.ScaleDescendantsShares
+                    $spec.DrsConfig.Option = $cluster.ExtensionData.Configuration.DrsConfig.Option
+                    $modify = $true
+                    $_this = Get-View -Id $destCluster.Id
+                    $_this.ReconfigureComputeResource_Task($spec, $modify) | Out-Null  
                 }
                 #EVCMode = $cluster.EVCMode # To be defined as this is a chicken/egg problem, if enabled hosts need to be in MM, if not all hosts need to be put in MM afterwards to enable
+
+                # Updating Permissions on the object
+                AddPermission -ObjectSource $cluster -ObjectDest $destCluster
             }
             # Check for VM folders within the datacenter
-            $vmFolders = get-datacenter $datacenter -Server $sourceVC| Get-folder -type vm | Sort-Object
-            If ($debug -ge 1) {write-host "`n    Checking VM Folders:"}
+            $vmFolders = get-datacenter $datacenter -Server $sourceVC| Get-folder -type vm #| Sort-Object 
+            If ($debug -ge 1) {MyLogger -Message "Checking VM Folders:"}
             foreach ($vmFolder in $vmFolders) {
                 If ($($vmFolder.Name) -ne 'vm' -and $($vmFolder.Name) -ne 'vCLS' -and $($vmFolder.Name) -ne 'Discovered virtual machine'){
                     $location = $null
                     $vmFolderPath = $vmFolder | Get-FolderPath
-                    $vmFolderPath.Path = ($vmFolderPath.Path).Replace($rootFolder.Name + "\" + $datacenter.Name + "\",$rootFolder.Name + "\" + "vm\")
-                    If ($debug -ge 1) {write-host "        Checking VM Folder: $($vmFolderPath.Path)"}
-                    If (get-datacenter $datacenter -Server $destVC| Get-Folder -Server $destVC  -Name "$($vmFolder.Name)" -Location "$($vmFolder.Parent)" -ErrorAction Ignore) {
-                        If ($debug -ge 1) {Write-Host "        VM Folder $($vmFolder.Name) already exists in $($destVC)" -ForegroundColor Green}
+                    If ($debug -ge 2) {MyLogger -Message "Checking VM Folder: $($vmFolderPath.Path)"}
+                    $vmFolderPath.Path = ($vmFolderPath.Path).Replace($($rootFolder.Name) + "\" + $($datacenter.Name) + "\",$($rootFolder.Name) + "\" + "vm\")
+                    If ($debug -ge 1) {MyLogger -Message "Checking VM Folder: $($vmFolderPath.Path)"}
+                    $key = @()
+                    $key =  ($vmFolderPath.Path -split "\\")[-2]
+                    $destvmFolder = $null
+                    if ($key -eq "vm") {
+                        $location = Get-Datacenter -Server $destVC -Name "$($datacenter.Name)" | get-folder -type vm
+                        If ($destvmFolder = Get-Folder -Name $vmFolder.Name -Location $location -ErrorAction Ignore) {
+                            If ($debug -ge 1) {MyLogger -Message "VM Folder $($vmFolder.Name) already exists in $($destVC)" -Color Green}
+                        }
+                        else{
+                            If ($debug -ge 1) {MyLogger -Message "Creating VM Folder $($vmFolder.Name) in $($destVC)) at $($vmFolderPathDest.Path)" -Color Yellow}
+                            If (-not $Test) {$destvmFolder = Get-Datacenter $datacenter -Server $destVC | Get-Folder vm | New-Folder -Name $vmFolderPath.Name -ErrorAction Ignore}
+                        }
                     }
                     else {
-                        $key = @()
-                        $key =  ($vmFolderPath.Path -split "\\")[-2]
-                        if ($key -eq "vm") {
-                            Get-Datacenter $datacenter -Server $destVC | Get-Folder vm | New-Folder -Name $vmFolderPath.Name | Out-Null
-                        }
-                        else {
-                            $location = Get-Datacenter -Server $destVC -Name "$($datacenter.Name)" | get-folder -type vm | get-folder $key
-                            Try{
-                                Get-Folder -Name $vmFolder.Name -Location $location -ErrorAction Stop | Out-Null
-                            }
-                            Catch{
-                                If (-not $Test) {New-Folder -Name $vmFolder.Name -Location $location | Out-Null}
+                        $location = Get-Datacenter -Server $destVC -Name "$($datacenter.Name)" | get-folder -type vm | get-folder $key -ErrorAction Ignore
+                        foreach ($loc in $location) {
+                            $vmFolderPathDest = $loc | Get-FolderPath
+                            $vmFolderPathDest.Path = ($vmFolderPathDest.Path).Replace($($rootFolder.Name) + "\" + $($datacenter.Name) + "\",$($rootFolder.Name) + "\" + "vm\")
+                            If ($vmFolderPath.Path -eq $vmFolderPathDest.Path){
+                                $location = $loc
+                                break
                             }
                         }
+                        If ($destvmFolder = Get-Folder -Name $vmFolder.Name -Location $location -ErrorAction Ignore) {
+                            If ($debug -ge 1) {MyLogger -Message "VM Folder $($vmFolder.Name) already exists in $($destVC))" -Color Green}
+                        }
+                        else{
+                            If ($debug -ge 1) {MyLogger -Message "Creating VM Folder $($vmFolder.Name) in $($destVC)) at $($vmFolderPathDest.Path)" -Color Yellow}
+                            If (-not $Test) {$destvmFolder = New-Folder -Name $vmFolder.Name -Location $location -ErrorAction Ignore}
+                        }   
                     }
+                    # If (get-datacenter "$($datacenter.Name)" -Server $destVC| Get-Folder -Server $destVC  -Name "$($vmFolder.Name)" -Location "$($vmFolder.Parent)" -ErrorAction Ignore) {
+                            # #$location = Get-Datacenter -Server $destVC -Name "$($datacenter.Name)" | get-folder -type vm | get-folder $key
+                            #     Get-Folder -Name $vmFolder.Name -Location $location -ErrorAction Stop | Out-Null
                     # $folderperms = Get-Folder -Location $vmFolder | Get-VIPermission #| ?{$_.IsSystem -eq $False}
                     # foreach ($folderperm in $folderperms) {
-                    #     Write-Host "VM Permissions: $folderperm"
+                    #     MyLogger -Message "VM Permissions: $folderperm"
                     # }
+                # Updating Permissions on the object
+                AddPermission -ObjectSource $vmFolder -ObjectDest $destvmFolder
                 }
             }
-            If ($debug -ge 1) {write-host "`n    Checking VM Folders: done" -ForegroundColor Green}
+            If ($debug -ge 1) {MyLogger -Message "Checking VM Folders: done" -Color Blue}
         }
     }
+    If ($debug -ge 1) {MyLogger -Message "Script Finished" -Color Blue}
+
 }
 
-# Get the Permissions  - Users need to exist
-$folderperms = Get-VIpermission -Server $sourceVC | Where ($_.Principal -inotcontains "VSPHERE.LOCAL")
+# # Get the Permissions  - Users need to exist
+# $folderperms = Get-VIpermission -Server $sourceVC | Where ($_.Principal -inotcontains "VSPHERE.LOCAL")
 
-$report = @()
-foreach($perm in $folderperms){
-    $row = "" | select EntityId, FolderName, Role, Principal, IsGroup, Propagate
-    $row.EntityId = $perm.EntityId
-    $Foldername = (Get-View -id $perm.EntityId).Name
-    $row.FolderName = $foldername
-    $row.Principal = $perm.Principal
-    $row.Role = $perm.Role
-    $row.IsGroup = $perm.IsGroup
-    $row.Propagate = $perm.Propagate
-    $report += $row
-}
-$report | export-csv "$exportPath\perms-$($sourceVC).csv" -NoTypeInformation
+# $report = @()
+# foreach($perm in $folderperms){
+#     $row = "" | select EntityId, FolderName, Role, Principal, IsGroup, Propagate
+#     $row.EntityId = $perm.EntityId
+#     $Foldername = (Get-View -id $perm.EntityId).Name
+#     $row.FolderName = $foldername
+#     $row.Principal = $perm.Principal
+#     $row.Role = $perm.Role
+#     $row.IsGroup = $perm.IsGroup
+#     $row.Propagate = $perm.Propagate
+#     $report += $row
+# }
+# $report | export-csv "$exportPath\perms-$($sourceVC).csv" -NoTypeInformation
 
 # If (-not $Test){
 #     ##Import Permissions
