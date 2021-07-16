@@ -18,15 +18,24 @@ No notes
 # Get vCenter Server Names
 #$sourceVC = Read-Host "Please enter the name of the source Server"; 
 #$destVC = Read-Host "Please enter the name of the destination Server"
-$sourceVC = 'pivcss001.vconsultants.local'
-#$sourceVC = 'ldnlxpvcsa1.vitol.com'
-$destVC = 'tanzu-vcsa-1.tanzu.demo'
-#$destVC = 'gvalxpvcsa1.vitol.com'
+#$sourceVC = 'pivcss001.vconsultants.local'
+$sourceVC = 'ldnlxpvcsa1.vitol.com'
+#$destVC = 'tanzu-vcsa-1.tanzu.demo'
+$destVC = 'gvalxpvcsa1.vitol.com'
 $ssoDomain = 'vsphere.local'
 $strRolesCustomPrefix = 'VITOL' # based on this prefix string we will filter the roles to transfer
+#$sourceVCUser = 'tmp_export@vsphere.local'
+#$destVCUser = 'administrator@vsphere.local'
+#$sourceVCPass = 'VMware123!'
+#$destVCPass = 'VMware123!'
+$sourceVCUser = 'tpphdp@geneva.vitol.com'
+$destVCUser = 'tpphdp@geneva.vitol.com'
+$sourceVCPass = ''
+$destVCPass = ''
 
 $timeStamp = Get-Date -Format "yyMMdd_hhmmss"
 $exportPath = 'C:\vCenterConfExport'
+$exportPath = "$($env:USERPROFILE)\Desktop"
 $verboseLogFile = "$($exportPath)\$($timeStamp)_MigrationLog.log"
 
 # TEST OR DEBUG
@@ -120,8 +129,8 @@ if ($global:defaultVIServers) {
 
 #$credsSource = get-credential
 #$credsDestination = get-credential
-connect-viserver -server $sourceVC -User tmp_export@vsphere.local -Password VMware123! #-credential $credsSource
-connect-viserver -server $destVC -User administrator@vsphere.local -Password VMware123! #-credential $credsDestination -NotDefault:$false
+connect-viserver -server $sourceVC -User $sourceVCUser -Password $sourceVCPass #-credential $credsSource
+connect-viserver -server $destVC -User $destVCUser -Password $destVCPass #-credential $credsDestination -NotDefault:$false
 
 # Migrate Roles
 # Variables
@@ -376,62 +385,6 @@ foreach ($rootFolder in $rootFolders) {
     If ($debug -ge 1) {MyLogger -Message "Script Finished" -Color Blue}
 
 }
-
-# # Get the Permissions  - Users need to exist
-# $folderperms = Get-VIpermission -Server $sourceVC | Where ($_.Principal -inotcontains "VSPHERE.LOCAL")
-
-# $report = @()
-# foreach($perm in $folderperms){
-#     $row = "" | select EntityId, FolderName, Role, Principal, IsGroup, Propagate
-#     $row.EntityId = $perm.EntityId
-#     $Foldername = (Get-View -id $perm.EntityId).Name
-#     $row.FolderName = $foldername
-#     $row.Principal = $perm.Principal
-#     $row.Role = $perm.Role
-#     $row.IsGroup = $perm.IsGroup
-#     $row.Propagate = $perm.Propagate
-#     $report += $row
-# }
-# $report | export-csv "$exportPath\perms-$($sourceVC).csv" -NoTypeInformation
-
-# If (-not $Test){
-#     ##Import Permissions
-#     $permissions = @()
-#     $permissions = Import-Csv "$exportPath\perms-$($sourceVC).csv"
-
-#     foreach ($perm in $permissions) {
-#         $entity = ""
-#         $entity = New-Object VMware.Vim.ManagedObjectReference
-
-#         switch -wildcard ($perm.EntityId)
-#             {
-#                 Folder* {
-#                 $entity.type = "Folder"
-#                 $entity.value = ((get-folder "$($perm.Foldername)" -Server $destVC).ID).Trimstart("Folder-")
-#             }
-#                 VirtualMachine* {
-#                 $entity.Type = "VirtualMachine"
-#                 $entity.value = ((Get-vm $perm.Foldername).Id).Trimstart("VirtualMachine-")
-#             }
-#     }
-#     $setperm = New-Object VMware.Vim.Permission
-#     $setperm.principal = $perm.Principal
-#         if ($perm.isgroup -eq "True") {
-#             $setperm.group = $true
-#         } else {
-#             $setperm.group = $false
-#         }
-#     $setperm.roleId = (Get-virole $perm.Role -Server $destVC).id
-#         if ($perm.propagate -eq "True") {
-#             $setperm.propagate = $true
-#         } else {
-#             $setperm.propagate = $false
-#         }
-
-#     $doactual = Get-View -Id 'AuthorizationManager-AuthorizationManager' -Server $destVC
-#     $doactual.SetEntityPermissions($entity, $setperm)
-#     }
-# }
 
 Disconnect-VIServer -Server $sourceVC -force -confirm:$false
 Disconnect-VIServer -Server $destVC -force -confirm:$false
