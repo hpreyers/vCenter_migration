@@ -18,24 +18,24 @@ No notes
 # Get vCenter Server Names
 #$sourceVC = Read-Host "Please enter the name of the source Server"; 
 #$destVC = Read-Host "Please enter the name of the destination Server"
-#$sourceVC = 'pivcss001.vconsultants.local'
-$sourceVC = 'ldnlxpvcsa1.vitol.com'
-#$destVC = 'tanzu-vcsa-1.tanzu.demo'
-$destVC = 'gvalxpvcsa1.vitol.com'
+$sourceVC = 'pivcss001.vconsultants.local'
+#$sourceVC = 'ldnlxpvcsa1.vitol.com'
+$destVC = 'tanzu-vcsa-1.tanzu.demo'
+#$destVC = 'gvalxpvcsa1.vitol.com'
 $ssoDomain = 'vsphere.local'
 $strRolesCustomPrefix = 'VITOL' # based on this prefix string we will filter the roles to transfer
-#$sourceVCUser = 'tmp_export@vsphere.local'
-#$destVCUser = 'administrator@vsphere.local'
-#$sourceVCPass = 'VMware123!'
-#$destVCPass = 'VMware123!'
-$sourceVCUser = 'tpphdp@geneva.vitol.com'
-$destVCUser = 'tpphdp@geneva.vitol.com'
-$sourceVCPass = ''
-$destVCPass = ''
+$sourceVCUser = 'tmp_export@vsphere.local'
+$destVCUser = 'administrator@vsphere.local'
+$sourceVCPass = 'VMware123!'
+$destVCPass = 'VMware123!'
+# $sourceVCUser = 'tpphdp@geneva.vitol.com'
+# $destVCUser = 'tpphdp@geneva.vitol.com'
+# $sourceVCPass = ''
+# $destVCPass = ''
 
 $timeStamp = Get-Date -Format "yyMMdd_hhmmss"
 $exportPath = 'C:\vCenterConfExport'
-$exportPath = "$($env:USERPROFILE)\Desktop"
+#$exportPath = "$($env:USERPROFILE)\Desktop"
 $verboseLogFile = "$($exportPath)\$($timeStamp)_MigrationLog.log"
 
 # TEST OR DEBUG
@@ -258,15 +258,7 @@ foreach ($rootFolder in $rootFolders) {
                 }
                 If ($cluster.HAEnabled -eq $True -and $clusterExists -eq $true){
                     If ($debug -ge 1) {MyLogger -Message "Setting Cluster HA Settings on $($cluster.Name) in $($datacenter.Name) in $($destVC)" -Color Yellow}
-                    # $clusterSettings = @{
-                    #     Name = $cluster.Name
-                    #     HAAdmissionControlEnabled = If ($cluster.HAAdmissionControlEnabled -eq $False) {$False} else {[Boolean]$cluster.HAAdmissionControlEnabled}
-                    #     HAFailoverLevel = $cluster.HAFailoverLevel
-                    #     HARestartPriority = $($cluster.HARestartPriority)
-                    #     HAIsolationResponse = $($cluster.HAIsolationResponse)
-                    #     Confirm = $false
-                    # }
-                    # Set-Cluster -Cluster $destCluster @clusterSettings | Out-Null
+                    $spec = $null
                     $spec = New-Object VMware.Vim.ClusterConfigSpecEx
                     $spec.DasConfig = New-Object VMware.Vim.ClusterDasConfigInfo
                     $spec.DasConfig.Enabled = $cluster.ExtensionData.Configuration.DasConfig.Enabled
@@ -305,18 +297,13 @@ foreach ($rootFolder in $rootFolders) {
                 }
                 If ($cluster.DrsEnabled -eq $True -and $clusterExists -eq $true){
                     If ($debug -ge 1) {MyLogger -Message "Setting Cluster Drs Settings on $($cluster.Name) in $($datacenter.Name) in $($destVC)" -Color Yellow}
-                    # $clusterSettings = @{
-                    #     Name = $cluster.Name
-                    #     DrsAutomationLevel = $($cluster.DrsAutomationLevel)
-                    #     Confirm = $false
-                    # }
-                    # Set-Cluster -Cluster $destCluster @clusterSettings | Out-Null
+                    $spec = $null
+                    $spec = New-Object VMware.Vim.ClusterConfigSpecEx
                     $spec.DrsConfig = New-Object VMware.Vim.ClusterDrsConfigInfo
                     $spec.DrsConfig.Enabled = $cluster.ExtensionData.Configuration.DrsConfig.Enabled
                     $spec.DrsConfig.EnableVmBehaviorOverrides = $cluster.ExtensionData.Configuration.DrsConfig.EnableVmBehaviorOverrides
                     $spec.DrsConfig.DefaultVmBehavior = $cluster.ExtensionData.Configuration.DrsConfig.DefaultVmBehavior
                     $spec.DrsConfig.VmotionRate = $cluster.ExtensionData.Configuration.DrsConfig.VmotionRate
-                    $spec.DrsConfig.ScaleDescendantsShares = $cluster.ExtensionData.Configuration.DrsConfig.ScaleDescendantsShares
                     $spec.DrsConfig.Option = $cluster.ExtensionData.Configuration.DrsConfig.Option
                     $modify = $true
                     $_this = Get-View -Id $destCluster.Id
@@ -368,13 +355,6 @@ foreach ($rootFolder in $rootFolders) {
                             If (-not $Test) {$destvmFolder = New-Folder -Name $vmFolder.Name -Location $location -ErrorAction Ignore}
                         }   
                     }
-                    # If (get-datacenter "$($datacenter.Name)" -Server $destVC| Get-Folder -Server $destVC  -Name "$($vmFolder.Name)" -Location "$($vmFolder.Parent)" -ErrorAction Ignore) {
-                            # #$location = Get-Datacenter -Server $destVC -Name "$($datacenter.Name)" | get-folder -type vm | get-folder $key
-                            #     Get-Folder -Name $vmFolder.Name -Location $location -ErrorAction Stop | Out-Null
-                    # $folderperms = Get-Folder -Location $vmFolder | Get-VIPermission #| ?{$_.IsSystem -eq $False}
-                    # foreach ($folderperm in $folderperms) {
-                    #     MyLogger -Message "VM Permissions: $folderperm"
-                    # }
                 # Updating Permissions on the object
                 AddPermission -ObjectSource $vmFolder -ObjectDest $destvmFolder
                 }
