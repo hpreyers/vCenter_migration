@@ -1,5 +1,5 @@
 ﻿$viserver = 'tanzu-vcsa-1.tanzu.demo'
-$clusters = Get-Cluster
+$clusters = Get-Cluster -Server $viserver
 Do {
   $i = 1
   foreach ($cluster in $clusters){
@@ -13,7 +13,7 @@ $clusterName = ($clusters[$clusterNumber]).Name
 
 $outfileVMToHosts = "c:\temp\drs-rules-vm_to_hosts.txt"
 Remove-Item $outfileVMToHosts
-$rules = get-cluster -Name $clusterName | Get-DrsVMHostRule
+$rules = Get-Cluster -Server $viserver -Name $clusterName | Get-DrsVMHostRule
 
 foreach($rule in $rules){
   $line = (Get-View -Id $rule.Cluster.Id).Name
@@ -24,7 +24,7 @@ foreach($rule in $rules){
 
 $outfileAffinityAntiAffinity = "c:\temp\drs-rules-AffinityAntiAffinity.txt"
 Remove-Item $outfileAffinityAntiAffinity
-$rules = get-cluster -Name $clusterName | Get-DrsRule
+$rules = Get-Cluster -Server $viserver -Name $clusterName | Get-DrsRule
 
 foreach($rule in $rules){
   $line = (Get-View -Id $rule.Cluster.Id).Name
@@ -37,7 +37,7 @@ foreach($rule in $rules){
 
 $outfileDRSGroups = "c:\temp\drs-groups.txt"
 Remove-Item $outfileDRSGroups
-$DRSGroups = get-cluster -Name $clusterName | Get-DrsClusterGroup
+$DRSGroups = Get-Cluster -Server $viserver -Name $clusterName | Get-DrsClusterGroup
 
 foreach($DRSGroup in $DRSGroups){
   $line = (Get-View -Id $DRSGroup.Cluster.Id).Name
