@@ -34,8 +34,9 @@ $destVCPass = 'VMware123!'
 # $destVCPass = ''
 
 $timeStamp = Get-Date -Format "yyMMdd_hhmmss"
-$exportPath = 'C:\TEMP\vCenterConfExport'
-##$exportPath = "$($env:USERPROFILE)\Desktop"
+#$exportPath = 'C:\TEMP\vCenterConfExport'
+$exportPath = 'C:\TEMP\'
+#$exportPath = "$($env:USERPROFILE)\Desktop"
 $verboseLogFile = "$($exportPath)\$($timeStamp)_MigrationLog.log"
 $LogToConsole = $true
 
@@ -221,7 +222,7 @@ Function CheckCluster {
 
 #Check if Log location exists
 If (-not (Test-Path $exportPath)) {
-    Write-Host 'The log location cannot be found' -ForegroundColor Red
+    Write-Host "The log location ($exportPath) cannot be found" -ForegroundColor Red
     exit
 }
 
