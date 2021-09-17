@@ -24,9 +24,9 @@ $destVC = 'tanzu-vcsa-1.tanzu.demo'
 #$destVC = 'gvalxpvcsa1.vitol.com'
 $ssoDomain = 'vsphere.local'
 $strRolesCustomPrefix = 'VITOL' # based on this prefix string we will filter the roles to transfer
-$sourceVCUser = 'tmp_export@vsphere.local'
+$sourceVCUser = 'administrator@vsphere.local'
 $destVCUser = 'administrator@vsphere.local'
-$sourceVCPass = 'VMware123!'
+$sourceVCPass = 'd+P+31n*B%Q1'
 $destVCPass = 'VMware123!'
 # $sourceVCUser = 'tpphdp@geneva.vitol.com'
 # $destVCUser = 'tpphdp@geneva.vitol.com'
@@ -34,8 +34,8 @@ $destVCPass = 'VMware123!'
 # $destVCPass = ''
 
 $timeStamp = Get-Date -Format "yyMMdd_hhmmss"
-$exportPath = 'C:\vCenterConfExport'
-#$exportPath = "$($env:USERPROFILE)\Desktop"
+$exportPath = 'C:\TEMP\vCenterConfExport'
+##$exportPath = "$($env:USERPROFILE)\Desktop"
 $verboseLogFile = "$($exportPath)\$($timeStamp)_MigrationLog.log"
 $LogToConsole = $true
 
@@ -237,153 +237,157 @@ if ($global:defaultVIServers) {
 connect-viserver -server $sourceVC -User $sourceVCUser -Password $sourceVCPass #-credential $credsSource
 connect-viserver -server $destVC -User $destVCUser -Password $destVCPass #-credential $credsDestination -NotDefault:$false
 
-# Migrate Roles
-# Variables
+if ($global:defaultVIServers) {
+    # Migrate Roles
+    # Variables
 
-try {
-    MyLogger -Message "Checking Roles in $($sourceVC) ..."
-    $roleCreated = 0
-    # Get roles to transfer (for everything else than system roles: '| ?{$_.IsSystem -eq $False}')
-    $roles = Get-VIRole -Server $sourceVC -Name $strRolesCustomPrefix*
-    # Get role Privileges for each role
-    foreach ($role in $roles) {
-        [string[]]$privsforRoleAfromsourceVC = Get-VIPrivilege -Role (Get-VIRole -Name $role -server $sourceVC) |%{$_.id}
-        If (Get-VIRole -Name $($role.Name) -Server $destVC -ErrorAction Ignore) {
-            MyLogger -Message "Role $($role.Name) already exists in $($destVC) - Updating Privileges" -Color Green
-        }
-        else {
-            # Create new role in Destination vCenter
-            MyLogger -Message "Creating Role $($role.Name) in $($destVC)" -Color Yellow
-            If (-not $Test) {New-VIRole -name $role -Server $destVC | Out-Null}
-            $roleCreated = +1
-            # Add Privileges to new role.
-            MyLogger -Message "Adding Privileges to Role $($role.Name) in $($destVC)" -Color Yellow
-            If (-not $Test) {Set-VIRole -role (get-virole -Name $role -Server $destVC) -AddPrivilege (get-viprivilege -id $privsforRoleAfromsourceVC -server $destVC) | Out-Null}
-        }
-    }
-    If ($roleCreated -eq 0) {MyLogger -Message "No Roles to create in $($destVC) ..." -Color Blue}
-}
-catch {
-    MyLogger -Message "There was an error in the Roles Migration part" Red
-    MyLogger -Message "`n($_.Exception.Message)`n"
-}
-
-MyLogger -Message "Checking Root folders in $($sourceVC) ..."
-# Retrieve the root folders and loop through each root folder
-$rootFolders = get-folder -server $sourceVC -Type Datacenter | Sort-Object
-foreach ($rootFolder in $rootFolders) {
-    # Discard the root folder 'Datacenters'
-    If ($rootFolder.Name -ne 'Datacenters'){
-        MyLogger -Message "Checking Datacenter Folder: $($rootFolder.Parent)\$($rootFolder.Name) on $($destVC)"
-        If ($destrootFolder = Get-Folder -Server $destVC -Name "$($rootFolder.Name)" -Location "$($rootFolder.Parent)" -ErrorAction Ignore) {
-            MyLogger -Message "Datacenter Folder $($rootFolder.Name) already exists in $($destVC)" -Color Green
-        }
-        else {
-            MyLogger -Message "Creating Datacenter Folder $($rootFolder.Name) in $($destVC)" -Color Yellow
-            If (-not $Test) {
-                $destrootFolder = New-Folder -Server $destVC -Name "$($rootFolder.Name)" -Location "$($rootFolder.Parent)" -ErrorAction Ignore
-            }
-        }
-        # Updating Permissions on the object
-        AddPermission -ObjectSource $rootFolder -ObjectDest $destrootFolder
-
-        # Retrieve the datacenters and loop through each DC
-        $datacenters = get-datacenter -server $sourceVC -Location $rootFolder | Sort-Object
-        foreach ($datacenter in $datacenters) {
-            MyLogger -Message "Checking Datacenter: $($datacenter.ParentFolder)\$($datacenter.Name)"
-            If ($destDatacenter = Get-Datacenter -Server $destVC -Name "$($datacenter.Name)" -Location "$($datacenter.ParentFolder)" -ErrorAction Ignore) {
-                MyLogger -Message "Datacenter $($datacenter.Name) already exists in $($destVC)" -Color Green
+    try {
+        MyLogger -Message "Checking Roles in $($sourceVC) ..."
+        $roleCreated = 0
+        # Get roles to transfer (for everything else than system roles: '| ?{$_.IsSystem -eq $False}')
+        $roles = Get-VIRole -Server $sourceVC -Name $strRolesCustomPrefix*
+        # Get role Privileges for each role
+        foreach ($role in $roles) {
+            [string[]]$privsforRoleAfromsourceVC = Get-VIPrivilege -Role (Get-VIRole -Name $role -server $sourceVC) |%{$_.id}
+            If (Get-VIRole -Name $($role.Name) -Server $destVC -ErrorAction Ignore) {
+                MyLogger -Message "Role $($role.Name) already exists in $($destVC) - Updating Privileges" -Color Green
             }
             else {
-                MyLogger -Message "Creating Datacenter $($datacenter.Name) in $($destVC)" -Color Yellow
-                If (-not $Test) {$destDatacenter = New-Datacenter -Server $destVC -Name "$($datacenter.Name)" -Location "$($datacenter.ParentFolder)" -ErrorAction Ignore}
+                # Create new role in Destination vCenter
+                MyLogger -Message "Creating Role $($role.Name) in $($destVC)" -Color Yellow
+                If (-not $Test) {New-VIRole -name $role -Server $destVC | Out-Null}
+                $roleCreated = +1
+                # Add Privileges to new role.
+                MyLogger -Message "Adding Privileges to Role $($role.Name) in $($destVC)" -Color Yellow
+                If (-not $Test) {Set-VIRole -role (get-virole -Name $role -Server $destVC) -AddPrivilege (get-viprivilege -id $privsforRoleAfromsourceVC -server $destVC) | Out-Null}
+            }
+        }
+        If ($roleCreated -eq 0) {MyLogger -Message "No Roles to create in $($destVC) ..." -Color Blue}
+    }
+    catch {
+        MyLogger -Message "There was an error in the Roles Migration part" Red
+        MyLogger -Message "`n($_.Exception.Message)`n"
+    }
+
+    MyLogger -Message "Checking Root folders in $($sourceVC) ..."
+    # Retrieve the root folders and loop through each root folder
+    $rootFolders = get-folder -server $sourceVC -Type Datacenter | Sort-Object
+    foreach ($rootFolder in $rootFolders) {
+        # Discard the root folder 'Datacenters'
+        If ($rootFolder.Name -ne 'Datacenters'){
+            MyLogger -Message "Checking Datacenter Folder: $($rootFolder.Parent)\$($rootFolder.Name) on $($destVC)"
+            If ($destrootFolder = Get-Folder -Server $destVC -Name "$($rootFolder.Name)" -Location "$($rootFolder.Parent)" -ErrorAction Ignore) {
+                MyLogger -Message "Datacenter Folder $($rootFolder.Name) already exists in $($destVC)" -Color Green
+            }
+            else {
+                MyLogger -Message "Creating Datacenter Folder $($rootFolder.Name) in $($destVC)" -Color Yellow
+                If (-not $Test) {
+                    $destrootFolder = New-Folder -Server $destVC -Name "$($rootFolder.Name)" -Location "$($rootFolder.Parent)" -ErrorAction Ignore
+                }
             }
             # Updating Permissions on the object
-            AddPermission -ObjectSource $datacenter -ObjectDest $destDatacenter
+            AddPermission -ObjectSource $rootFolder -ObjectDest $destrootFolder
 
-            # Check the datacenter subfolders
-            MyLogger -Message "Checking Datacenter SubFolders"
-            $dcSubFolders = get-folder -server $sourceVC -Type HostAndCluster -Location $datacenter | Sort-Object
-            foreach ($dcSubFolder in $dcSubFolders) {
-                If ($($dcSubFolder.Name) -eq 'host'){
-                    MyLogger -Message "Checking Datacenter SubFolder: $($datacenter.Name)\$($dcSubFolder.Name) on $($destVC)"
-                    If ($destdcSubFolder = Get-Datacenter -Server $destVC -Name $destDatacenter | Get-Folder -Server $destVC -Name "$($dcSubFolder.Name)" -Type HostAndCluster -ErrorAction Ignore) {
-                        MyLogger -Message "Datacenter SubFolder $($dcSubFolder.Name) already exists in $($destVC)" -Color Green
-                        CheckCluster -ObjectSource $dcSubFolder -ObjectDest $destdcSubFolder
-                    }
-                    else {
-                        MyLogger -Message "Creating Datacenter SubFolder $($dcSubFolder.Name) in $($destVC)" -Color Yellow
-                        If (-not $Test) {$destdcSubFolder = New-Folder -Server $destVC -Name "$($dcSubFolder.Name)" -Location (Get-Datacenter -Server $destVC -Name "$($datacenter.Name)") -ErrorAction Ignore}
-                        CheckCluster -ObjectSource $dcSubFolder -ObjectDest $destdcSubFolder
-                    }
-                    # Updating Permissions on the object
-                    AddPermission -ObjectSource $dcSubFolder -ObjectDest $destdcSubFolder    
-                } else {
-                    MyLogger -Message "Checking Datacenter SubFolder: $($datacenter.Name)\$($dcSubFolder.Name) on $($destVC)"
-                    If ($destdcSubFolder = Get-Datacenter -Server $destVC -Name $destDatacenter | Get-Folder -Server $destVC -Name "$($dcSubFolder.Name)" -Type HostAndCluster -ErrorAction Ignore) {
-                        MyLogger -Message "Datacenter SubFolder $($dcSubFolder.Name) already exists in $($destVC)" -Color Green
-                        CheckCluster -ObjectSource $dcSubFolder -ObjectDest $destdcSubFolder
-                    }
-                    else {
-                        MyLogger -Message "Creating Datacenter SubFolder $($dcSubFolder.Name) in $($destVC)" -Color Yellow
-                        If (-not $Test) {$destdcSubFolder = New-Folder -Server $destVC -Name "$($dcSubFolder.Name)" -Location (Get-Datacenter -Server $destVC -Name "$($datacenter.Name)") -ErrorAction Ignore}
-                        CheckCluster -ObjectSource $dcSubFolder -ObjectDest $destdcSubFolder
-                    }
-                    # Updating Permissions on the object
-                    AddPermission -ObjectSource $dcSubFolder -ObjectDest $destdcSubFolder    
+            # Retrieve the datacenters and loop through each DC
+            $datacenters = get-datacenter -server $sourceVC -Location $rootFolder | Sort-Object
+            foreach ($datacenter in $datacenters) {
+                MyLogger -Message "Checking Datacenter: $($datacenter.ParentFolder)\$($datacenter.Name)"
+                If ($destDatacenter = Get-Datacenter -Server $destVC -Name "$($datacenter.Name)" -Location "$($datacenter.ParentFolder)" -ErrorAction Ignore) {
+                    MyLogger -Message "Datacenter $($datacenter.Name) already exists in $($destVC)" -Color Green
                 }
-            }
-            # Check for VM folders within the datacenter
-            $vmFolders = get-datacenter $datacenter -Server $sourceVC| Get-folder -type vm #| Sort-Object 
-            MyLogger -Message "Checking VM Folders:"
-            foreach ($vmFolder in $vmFolders) {
-                If ($($vmFolder.Name) -ne 'vm' -and $($vmFolder.Name) -ne 'vCLS' -and $($vmFolder.Name) -ne 'Discovered virtual machine'){
-                    $location = $null
-                    $vmFolderPath = $vmFolder | Get-FolderPath
-                    If ($debug -ge 2) {MyLogger -Message "Checking VM Folder: $($vmFolderPath.Path)"}
-                    $vmFolderPath.Path = ($vmFolderPath.Path).Replace($($rootFolder.Name) + "\" + $($datacenter.Name) + "\",$($rootFolder.Name) + "\" + "vm\")
-                    MyLogger -Message "Checking VM Folder: $($vmFolderPath.Path)"
-                    $key = @()
-                    $key =  ($vmFolderPath.Path -split "\\")[-2]
-                    $destvmFolder = $null
-                    if ($key -eq "vm") {
-                        $location = Get-Datacenter -Server $destVC -Name "$($datacenter.Name)" | get-folder -type vm
-                        If ($destvmFolder = Get-Folder -Name $vmFolder.Name -Location $location -ErrorAction Ignore) {
-                            MyLogger -Message "VM Folder $($vmFolder.Name) already exists in $($destVC)" -Color Green
+                else {
+                    MyLogger -Message "Creating Datacenter $($datacenter.Name) in $($destVC)" -Color Yellow
+                    If (-not $Test) {$destDatacenter = New-Datacenter -Server $destVC -Name "$($datacenter.Name)" -Location "$($datacenter.ParentFolder)" -ErrorAction Ignore}
+                }
+                # Updating Permissions on the object
+                AddPermission -ObjectSource $datacenter -ObjectDest $destDatacenter
+
+                # Check the datacenter subfolders
+                MyLogger -Message "Checking Datacenter SubFolders"
+                $dcSubFolders = get-folder -server $sourceVC -Type HostAndCluster -Location $datacenter | Sort-Object
+                foreach ($dcSubFolder in $dcSubFolders) {
+                    If ($($dcSubFolder.Name) -eq 'host'){
+                        MyLogger -Message "Checking Datacenter SubFolder: $($datacenter.Name)\$($dcSubFolder.Name) on $($destVC)"
+                        If ($destdcSubFolder = Get-Datacenter -Server $destVC -Name $destDatacenter | Get-Folder -Server $destVC -Name "$($dcSubFolder.Name)" -Type HostAndCluster -ErrorAction Ignore) {
+                            MyLogger -Message "Datacenter SubFolder $($dcSubFolder.Name) already exists in $($destVC)" -Color Green
+                            CheckCluster -ObjectSource $dcSubFolder -ObjectDest $destdcSubFolder
                         }
-                        else{
-                            MyLogger -Message "Creating VM Folder $($vmFolder.Name) in $($destVC)) at $($vmFolderPathDest.Path)" -Color Yellow
-                            If (-not $Test) {$destvmFolder = Get-Datacenter $datacenter -Server $destVC | Get-Folder vm | New-Folder -Name $vmFolderPath.Name -ErrorAction Ignore}
+                        else {
+                            MyLogger -Message "Creating Datacenter SubFolder $($dcSubFolder.Name) in $($destVC)" -Color Yellow
+                            If (-not $Test) {$destdcSubFolder = New-Folder -Server $destVC -Name "$($dcSubFolder.Name)" -Location (Get-Datacenter -Server $destVC -Name "$($datacenter.Name)") -ErrorAction Ignore}
+                            CheckCluster -ObjectSource $dcSubFolder -ObjectDest $destdcSubFolder
                         }
+                        # Updating Permissions on the object
+                        AddPermission -ObjectSource $dcSubFolder -ObjectDest $destdcSubFolder    
+                    } else {
+                        MyLogger -Message "Checking Datacenter SubFolder: $($datacenter.Name)\$($dcSubFolder.Name) on $($destVC)"
+                        If ($destdcSubFolder = Get-Datacenter -Server $destVC -Name $destDatacenter | Get-Folder -Server $destVC -Name "$($dcSubFolder.Name)" -Type HostAndCluster -ErrorAction Ignore) {
+                            MyLogger -Message "Datacenter SubFolder $($dcSubFolder.Name) already exists in $($destVC)" -Color Green
+                            CheckCluster -ObjectSource $dcSubFolder -ObjectDest $destdcSubFolder
+                        }
+                        else {
+                            MyLogger -Message "Creating Datacenter SubFolder $($dcSubFolder.Name) in $($destVC)" -Color Yellow
+                            If (-not $Test) {$destdcSubFolder = New-Folder -Server $destVC -Name "$($dcSubFolder.Name)" -Location (Get-Datacenter -Server $destVC -Name "$($datacenter.Name)") -ErrorAction Ignore}
+                            CheckCluster -ObjectSource $dcSubFolder -ObjectDest $destdcSubFolder
+                        }
+                        # Updating Permissions on the object
+                        AddPermission -ObjectSource $dcSubFolder -ObjectDest $destdcSubFolder    
                     }
-                    else {
-                        $location = Get-Datacenter -Server $destVC -Name "$($datacenter.Name)" | get-folder -type vm | get-folder $key -ErrorAction Ignore
-                        foreach ($loc in $location) {
-                            $vmFolderPathDest = $loc | Get-FolderPath
-                            $vmFolderPathDest.Path = ($vmFolderPathDest.Path).Replace($($rootFolder.Name) + "\" + $($datacenter.Name) + "\",$($rootFolder.Name) + "\" + "vm\")
-                            If ($vmFolderPath.Path -eq $vmFolderPathDest.Path){
-                                $location = $loc
-                                break
+                }
+                # Check for VM folders within the datacenter
+                $vmFolders = get-datacenter $datacenter -Server $sourceVC| Get-folder -type vm #| Sort-Object 
+                MyLogger -Message "Checking VM Folders:"
+                foreach ($vmFolder in $vmFolders) {
+                    If ($($vmFolder.Name) -ne 'vm' -and $($vmFolder.Name) -ne 'vCLS' -and $($vmFolder.Name) -ne 'Discovered virtual machine'){
+                        $location = $null
+                        $vmFolderPath = $vmFolder | Get-FolderPath
+                        If ($debug -ge 2) {MyLogger -Message "Checking VM Folder: $($vmFolderPath.Path)"}
+                        $vmFolderPath.Path = ($vmFolderPath.Path).Replace($($rootFolder.Name) + "\" + $($datacenter.Name) + "\",$($rootFolder.Name) + "\" + "vm\")
+                        MyLogger -Message "Checking VM Folder: $($vmFolderPath.Path)"
+                        $key = @()
+                        $key =  ($vmFolderPath.Path -split "\\")[-2]
+                        $destvmFolder = $null
+                        if ($key -eq "vm") {
+                            $location = Get-Datacenter -Server $destVC -Name "$($datacenter.Name)" | get-folder -type vm
+                            If ($destvmFolder = Get-Folder -Name $vmFolder.Name -Location $location -ErrorAction Ignore) {
+                                MyLogger -Message "VM Folder $($vmFolder.Name) already exists in $($destVC)" -Color Green
+                            }
+                            else{
+                                MyLogger -Message "Creating VM Folder $($vmFolder.Name) in $($destVC)) at $($vmFolderPathDest.Path)" -Color Yellow
+                                If (-not $Test) {$destvmFolder = Get-Datacenter $datacenter -Server $destVC | Get-Folder vm | New-Folder -Name $vmFolderPath.Name -ErrorAction Ignore}
                             }
                         }
-                        If ($destvmFolder = Get-Folder -Name $vmFolder.Name -Location $location -ErrorAction Ignore) {
-                            MyLogger -Message "VM Folder $($vmFolder.Name) already exists in $($destVC))" -Color Green
+                        else {
+                            $location = Get-Datacenter -Server $destVC -Name "$($datacenter.Name)" | get-folder -type vm | get-folder $key -ErrorAction Ignore
+                            foreach ($loc in $location) {
+                                $vmFolderPathDest = $loc | Get-FolderPath
+                                $vmFolderPathDest.Path = ($vmFolderPathDest.Path).Replace($($rootFolder.Name) + "\" + $($datacenter.Name) + "\",$($rootFolder.Name) + "\" + "vm\")
+                                If ($vmFolderPath.Path -eq $vmFolderPathDest.Path){
+                                    $location = $loc
+                                    break
+                                }
+                            }
+                            If ($destvmFolder = Get-Folder -Name $vmFolder.Name -Location $location -ErrorAction Ignore) {
+                                MyLogger -Message "VM Folder $($vmFolder.Name) already exists in $($destVC)" -Color Green
+                            }
+                            else{
+                                MyLogger -Message "Creating VM Folder $($vmFolder.Name) in $($destVC)) at $($vmFolderPathDest.Path)" -Color Yellow
+                                If (-not $Test) {$destvmFolder = New-Folder -Name $vmFolder.Name -Location $location -ErrorAction Ignore}
+                            }   
                         }
-                        else{
-                            MyLogger -Message "Creating VM Folder $($vmFolder.Name) in $($destVC)) at $($vmFolderPathDest.Path)" -Color Yellow
-                            If (-not $Test) {$destvmFolder = New-Folder -Name $vmFolder.Name -Location $location -ErrorAction Ignore}
-                        }   
+                    # Updating Permissions on the object
+                    AddPermission -ObjectSource $vmFolder -ObjectDest $destvmFolder
                     }
-                # Updating Permissions on the object
-                AddPermission -ObjectSource $vmFolder -ObjectDest $destvmFolder
                 }
+                MyLogger -Message "Checking VM Folders: done" -Color Blue
             }
-            MyLogger -Message "Checking VM Folders: done" -Color Blue
         }
     }
-}
 
-Disconnect-VIServer -Server $sourceVC -force -confirm:$false
-Disconnect-VIServer -Server $destVC -force -confirm:$false
+    Disconnect-VIServer -Server $sourceVC -force -confirm:$false
+    Disconnect-VIServer -Server $destVC -force -confirm:$false
+} else {
+    Write-Host 'Could not connect to vCenters' -ForegroundColor Red
+}
 
 MyLogger -Message "Script Finished" -Color Blue
