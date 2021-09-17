@@ -1,6 +1,15 @@
 ﻿$viserver = 'tanzu-vcsa-1.tanzu.demo'
-$clusterName = 'tanzu-cluster'
-
+$clusters = Get-Cluster -Server
+Do {
+  $i = 1
+  foreach ($cluster in $clusters){
+    Write-Host "$i. $($cluster.Name)"
+    $i = $i + 1
+  }
+  [int]$clusterNumber = Read-Host -Prompt "Enter the number for the cluster"
+} Until ($clusterNumber -in 1..$clusters.Count) # -and ($clusterNumber -lt 1))
+write $clusters.count
+$clusterName = ($clusters[$clusterNumber]).Name
 $infileDRSGroups = "c:\temp\drs-groups.txt"
 $DRSGroups = Get-Content $infileDRSGroups
 
