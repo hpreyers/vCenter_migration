@@ -12,29 +12,28 @@ Do {
         $i = $i + 1
      }
   }
-  [int]$itemNumber = Read-Host -Prompt "Enter the number for the root folder"
+  [int]$itemNumber = Read-Host -Prompt "`nEnter the number for the root folder"
 } Until ($itemNumber -in 1..$to.Count) # -and ($clusterNumber -lt 1))
 
 $folderName = ($to[$itemNumber]).Name
 $to = Get-Folder -Type Datacenter -Name $folderName
 
 # request a filter string
-[string]$filter = Read-Host -Prompt "Enter a string to filter the alarms"
+[string]$filter = Read-Host -Prompt "`nEnter a string to filter the alarms"
 $filter = "*" + $filter +"*"
 
 # show the filtered alarms
 Do {
+  Write-Host "`n"
   $i = 1
-  $i2 = 1
   foreach ($alarm in $alarms){ 
     $filteredAlarm = $alarm | Where {$_.Info.Name -ilike $filter}
     If ($filteredAlarm){
         Write-Host "$i. $($alarm.Info.Name)"
-        $i2 = $i2 + 1
     }
     $i = $i + 1
   }
-  [int]$alarmNumber = Read-Host -Prompt "Enter the number for the alarm"
+  [int]$alarmNumber = Read-Host -Prompt "`nEnter the number for the alarm"
 } Until ($alarmNumber -in 1..($alarms.Count)) # -and ($clusterNumber -lt 1))
 
 $alarm = $alarms[$alarmnumber - 1]
@@ -48,7 +47,7 @@ $spec = New-Object VMware.Vim.AlarmSpec
 #$spec.Setting = New-Object VMware.Vim.AlarmSetting
 
 $spec.Name = "$($folderName.Substring(0,3)) - $($alarm.Info.Name)"
-Write-Host "The following alarm will be created: $($spec.Name)"
+Write-Host "`nThe following alarm will be created: $($spec.Name)" -ForegroundColor Green
 $spec.Description = $alarm.Info.Description
 $spec.Enabled = $true
 
