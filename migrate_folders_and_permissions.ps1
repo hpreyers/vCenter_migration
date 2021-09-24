@@ -21,7 +21,7 @@ No notes
 $sourceVC = 'pivcss001.vconsultants.local'
 $destVC = 'tanzu-vcsa-1.tanzu.demo'
 $ssoDomain = 'vsphere.local'
-$strRolesCustomPrefix = 'VITOL' # based on this prefix string we will filter the roles to transfer
+$strRolesCustomPrefix = 'Organisation' # based on this prefix string we will filter the roles to transfer
 $sourceVCUser = 'administrator@vsphere.local'
 $destVCUser = 'administrator@vsphere.local'
 $sourceVCPass = 'VMware123!'
