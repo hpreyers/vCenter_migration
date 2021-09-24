@@ -16,22 +16,16 @@ No notes
 ### GLOBAL VARIABLES
 
 # Get vCenter Server Names
-#$sourceVC = Read-Host "Please enter the name of the source Server"; 
-#$destVC = Read-Host "Please enter the name of the destination Server"
+# $sourceVC = Read-Host "Please enter the name of the source Server"; 
+# $destVC = Read-Host "Please enter the name of the destination Server"
 $sourceVC = 'pivcss001.vconsultants.local'
-#$sourceVC = 'ldnlxpvcsa1.vitol.com'
 $destVC = 'tanzu-vcsa-1.tanzu.demo'
-#$destVC = 'gvalxpvcsa1.vitol.com'
 $ssoDomain = 'vsphere.local'
-$strRolesCustomPrefix = 'VITOL' # based on this prefix string we will filter the roles to transfer
+$strRolesCustomPrefix = 'Organisation' # based on this prefix string we will filter the roles to transfer
 $sourceVCUser = 'administrator@vsphere.local'
 $destVCUser = 'administrator@vsphere.local'
-$sourceVCPass = 'd+P+31n*B%Q1'
+$sourceVCPass = 'VMware123!'
 $destVCPass = 'VMware123!'
-# $sourceVCUser = 'tpphdp@geneva.vitol.com'
-# $destVCUser = 'tpphdp@geneva.vitol.com'
-# $sourceVCPass = ''
-# $destVCPass = ''
 
 $timeStamp = Get-Date -Format "yyMMdd_hhmmss"
 #$exportPath = 'C:\TEMP\vCenterConfExport'
