@@ -1,7 +1,9 @@
-$si = Get-View serviceInstance
-$alarmMgr = Get-View -Id $si.Content.AlarmManager
-$alarms = Get-View -Id ($alarmMgr.GetAlarm($si.Content.RootFolder))
-$to = Get-Folder -Type Datacenter
+$VIServer = 'tanzu-vcsa-1.tanzu.demo'
+
+$si = Get-View serviceInstance -Server $VIServer
+$alarmMgr = Get-View -Id $si.Content.AlarmManager -Server $VIServer
+$alarms = Get-View -Id ($alarmMgr.GetAlarm($si.Content.RootFolder)) -Server $VIServer
+$to = Get-Folder -Type Datacenter -Server $VIServer
 
 # show to root folder to select from
 Do {
