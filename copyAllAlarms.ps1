@@ -1,4 +1,4 @@
-$VIServer = 'gvalxpvcsa1.vitol.com'
+$VIServer = 'tanzu-vcsa-1.tanzu.demo'
 
 $si = Get-View serviceInstance -Server $VIServer
 $alarmMgr = Get-View -Id $si.Content.AlarmManager -Server $VIServer
