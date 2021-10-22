@@ -18,8 +18,8 @@ No notes
 # Get vCenter Server Names
 # $sourceVC = Read-Host "Please enter the name of the source Server"; 
 # $destVC = Read-Host "Please enter the name of the destination Server"
-$sourceVC = 'pivcss001.vconsultants.local'
-$destVC = 'tanzu-vcsa-1.tanzu.demo'
+$sourceVC = 'tanzu-vcsa-1.tanzu.demo'
+$destVC = 'tanzu-vcsa-2.tanzu.demo'
 $ssoDomain = 'vsphere.local'
 $strRolesCustomPrefix = 'Organisation' # based on this prefix string we will filter the roles to transfer
 $sourceVCUser = 'administrator@vsphere.local'
