@@ -1,5 +1,5 @@
-﻿$sourceVC = 'ldnlxpvcsa1.vitol.com'
-$destVC = 'ldnlxpvcenter.vitol.com'
+$sourceVC = 'tanzu-vcsa-1.tanzu.demo'
+$destVC = 'tanzu-vcsa-2.tanzu.demo'
 
 $categories = Get-TagCategory -server $sourceVC
 $tags = get-tag -server $sourceVC
