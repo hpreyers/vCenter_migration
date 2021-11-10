@@ -11,7 +11,7 @@ Do {
   [int]$clusterNumber = Read-Host -Prompt "Enter the number for the cluster"
 } Until ($clusterNumber -in 1..$clusters.Count) # -and ($clusterNumber -lt 1))
 
-$clusterName = ($clusters[$clusterNumber]).Name
+$clusterName = ($clusters[$clusterNumber-1]).Name
 
 $outfileVMToHosts = "$exportLocation\drs-rules-vm_to_hosts.txt"
 Remove-Item $outfileVMToHosts
