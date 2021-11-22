@@ -13,8 +13,8 @@ Do {
 
 $clusterName = ($clusters[$clusterNumber-1]).Name
 
-$outfileVMToHosts = "$exportLocation\drs-rules-vm_to_hosts.txt"
-Remove-Item $outfileVMToHosts
+$outfileVMToHosts = "$exportLocation\$clusterName-drs-rules-vm_to_hosts.txt"
+If (Test-path $outfileVMToHosts) {Remove-Item $outfileVMToHosts}
 $rules = Get-Cluster -Server $viserver -Name $clusterName | Get-DrsVMHostRule
 
 foreach($rule in $rules){
@@ -24,8 +24,8 @@ foreach($rule in $rules){
   $line | Out-File -Append $outfileVMToHosts 
 }
 
-$outfileAffinityAntiAffinity = "$exportLocation\drs-rules-AffinityAntiAffinity.txt"
-Remove-Item $outfileAffinityAntiAffinity
+$outfileAffinityAntiAffinity = "$exportLocation\$clusterName-drs-rules-AffinityAntiAffinity.txt"
+If (Test-path $outfileAffinityAntiAffinity) {Remove-Item $outfileAffinityAntiAffinity}
 $rules = Get-Cluster -Server $viserver -Name $clusterName | Get-DrsRule
 
 foreach($rule in $rules){
@@ -37,8 +37,8 @@ foreach($rule in $rules){
   $line | Out-File -Append $outfileAffinityAntiAffinity 
 }
 
-$outfileDRSGroups = "$exportLocation\drs-groups.txt"
-Remove-Item $outfileDRSGroups
+$outfileDRSGroups = "$exportLocation\$clusterName-drs-groups.txt"
+If (Test-path $outfileDRSGroups) {Remove-Item $outfileDRSGroups}
 $DRSGroups = Get-Cluster -Server $viserver -Name $clusterName | Get-DrsClusterGroup
 
 foreach($DRSGroup in $DRSGroups){
