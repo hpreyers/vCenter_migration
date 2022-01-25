@@ -1,4 +1,4 @@
-﻿$si = Get-View ServiceInstance
+$si = Get-View ServiceInstance
 $alarmMgr = Get-View -Id $si.Content.AlarmManager
 
 # AlarmSpec
@@ -15,7 +15,7 @@ $trans.FinalState = "Yellow"
 # Expression - Login
 $expression = New-Object VMware.Vim.EventAlarmExpression
 $expression.EventType = 'UserLoginSessionEvent'
-$expression.objectType = "Datacenters"
+$expression.objectType = "Datacenter"
 $expression.status = "Yellow"
 
 # Root login
